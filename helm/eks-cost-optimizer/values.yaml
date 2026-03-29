@@ -17,7 +17,7 @@ imagePullSecrets: []
 serviceAccount:
   create: true
   annotations:
-    # IRSA role ARN — must have CloudWatch, EC2 Pricing, EKS read permissions
+    # IRSA role ARN — must have EC2 Pricing, EKS read, and Cost Explorer permissions
     eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/eks-cost-optimizer-role"
   name: "eks-cost-optimizer"
 
