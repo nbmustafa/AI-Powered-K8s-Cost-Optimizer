@@ -22,9 +22,9 @@
 │          ┌────────────────────────┼─────────────────────────┐   │
 │          │                        │                          │   │
 │   ┌──────▼──────┐    ┌────────────▼────┐    ┌────────────┐  │   │
-│   │ Kubernetes  │    │   Prometheus /  │    │  Anthropic │  │   │
-│   │  API Server │    │  CloudWatch CW  │    │  Claude AI │  │   │
-│   │ (nodes/pods)│    │  (metrics p95)  │    │  (advisor) │  │   │
+│   │ Kubernetes  │    │   Prometheus    │    │  Anthropic │  │   │
+│   │  API Server │    │  (PromQL p95)   │    │  Claude AI │  │   │
+│   │ (nodes/pods)│    │  metrics-server │    │  (advisor) │  │   │
 │   └─────────────┘    └─────────────────┘    └────────────┘  │   │
 │                                                              │   │
 │          ┌───────────────────────────────────────────────┐  │   │

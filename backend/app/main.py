@@ -38,7 +38,6 @@ async def lifespan(app: FastAPI):
     app.state.k8s_collector = K8sCollector(settings.kubeconfig_path)
     app.state.metrics_collector = MetricsCollector(
         prometheus_url=settings.prometheus_url,
-        cloudwatch_region=settings.aws_region,
     )
     app.state.cost_analyzer = CostAnalyzer(region=settings.aws_region)
     app.state.ai_advisor = AIAdvisor(api_key=settings.anthropic_api_key)

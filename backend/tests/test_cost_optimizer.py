@@ -287,7 +287,7 @@ class TestCostReportGeneration:
         metrics = {
             "node_metrics": {"node-1": {"cpu_p95": 0.10, "mem_p95": 0.15}},
             "pod_metrics": {"production/app-pod": {"cpu_p95": 0.05, "mem_p95": 0.1}},
-            "sources": {"prometheus": True, "cloudwatch": False},
+            "sources": {"prometheus": True},
         }
 
         report = analyzer.generate_report(snapshot, metrics)
