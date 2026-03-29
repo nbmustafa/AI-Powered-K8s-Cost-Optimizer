@@ -1,0 +1,136 @@
+# ── EKS Cost Optimizer — Helm Values ─────────────────────────────────────────
+# Production defaults. Override per-environment via values-{env}.yaml
+
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 2
+
+image:
+  repository: YOUR_ECR_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/eks-cost-optimizer
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+
+# ── Service Account & IRSA ────────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  annotations:
+    # IRSA role ARN — must have CloudWatch, EC2 Pricing, EKS read permissions
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/eks-cost-optimizer-role"
+  name: "eks-cost-optimizer"
+
+# ── Pod settings ──────────────────────────────────────────────────────────────
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+  prometheus.io/path: "/metrics"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  fsGroup: 1001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+# ── Resources ─────────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: "250m"
+    memory: "256Mi"
+  limits:
+    cpu: "1000m"
+    memory: "512Mi"
+
+# ── Service ───────────────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: "alb"
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERT_ID"
+  hosts:
+    - host: eks-cost-optimizer.internal.company.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# ── Autoscaling ───────────────────────────────────────────────────────────────
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 75
+
+# ── Pod Disruption Budget ─────────────────────────────────────────────────────
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# ── Application config (env vars) ─────────────────────────────────────────────
+config:
+  CLUSTER_NAME: "production-eks"
+  AWS_DEFAULT_REGION: "us-east-1"
+  K8S_IN_CLUSTER: "true"
+  PROMETHEUS_URL: "http://prometheus-server.monitoring.svc.cluster.local:9090"
+  METRICS_LOOKBACK_HOURS: "24"
+  CACHE_TTL_SECONDS: "300"
+  LOG_LEVEL: "INFO"
+  CORS_ORIGINS: '["https://eks-cost-optimizer.internal.company.com"]'
+
+# ── Secrets (reference from AWS Secrets Manager via External Secrets) ─────────
+externalSecrets:
+  enabled: true
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: aws-secrets-manager
+    kind: ClusterSecretStore
+  data:
+    - secretKey: ANTHROPIC_API_KEY
+      remoteRef:
+        key: eks-cost-optimizer/anthropic-api-key
+
+# ── Node selection ────────────────────────────────────────────────────────────
+nodeSelector:
+  kubernetes.io/os: linux
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: ["eks-cost-optimizer"]
+          topologyKey: kubernetes.io/hostname
+
+# ── Topology Spread ───────────────────────────────────────────────────────────
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: eks-cost-optimizer

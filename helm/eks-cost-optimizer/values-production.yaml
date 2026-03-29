@@ -1,0 +1,66 @@
+# ── Production environment overrides ─────────────────────────────────────────
+# Usage:
+#   helm upgrade --install eks-cost-optimizer ./helm/eks-cost-optimizer \
+#     -f helm/eks-cost-optimizer/values.yaml \
+#     -f helm/eks-cost-optimizer/values-production.yaml \
+#     --set image.tag=<git-sha>
+
+image:
+  repository: ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/eks-cost-optimizer
+  tag: "latest"   # overridden by CI: --set image.tag=<sha>
+
+replicaCount: 2
+
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/eks-cost-optimizer-prod-role"
+
+config:
+  CLUSTER_NAME: "production-eks"
+  AWS_DEFAULT_REGION: "us-east-1"
+  K8S_IN_CLUSTER: "true"
+  PROMETHEUS_URL: "http://prometheus-server.monitoring.svc.cluster.local:9090"
+  METRICS_LOOKBACK_HOURS: "24"
+  CACHE_TTL_SECONDS: "300"
+  LOG_LEVEL: "INFO"
+  CORS_ORIGINS: '["https://eks-cost-optimizer.internal.company.com"]'
+
+# API_URL is empty — React is served from the same origin as the API (:443 via ALB).
+# entrypoint.sh substitutes this into /app/static/config.js at pod startup.
+extraEnv:
+  - name: API_URL
+    value: ""
+
+ingress:
+  enabled: true
+  className: "alb"
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERT-ID"
+  hosts:
+    - host: eks-cost-optimizer.internal.company.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+resources:
+  requests:
+    cpu: "250m"
+    memory: "256Mi"
+  limits:
+    cpu: "1000m"
+    memory: "512Mi"

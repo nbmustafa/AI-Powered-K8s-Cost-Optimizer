@@ -1,0 +1,56 @@
+---
+# CronJob: generate and cache a fresh cost report every 6 hours
+# and optionally POST a summary to a Slack webhook
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: eks-cost-optimizer-scheduled-report
+  namespace: cost-optimizer
+  labels:
+    app.kubernetes.io/name: eks-cost-optimizer
+    app.kubernetes.io/component: scheduled-report
+spec:
+  schedule: "0 */6 * * *"    # Every 6 hours
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: eks-cost-optimizer
+          restartPolicy: OnFailure
+          containers:
+            - name: report-trigger
+              image: curlimages/curl:8.5.0
+              env:
+                - name: API_URL
+                  value: "http://eks-cost-optimizer.cost-optimizer.svc.cluster.local/api/v1"
+                - name: SLACK_WEBHOOK_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: eks-cost-optimizer-secrets
+                      key: SLACK_WEBHOOK_URL
+                      optional: true
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  echo "=== Refreshing cost report ==="
+                  REPORT=$(curl -sf "${API_URL}/cost-report?force_refresh=true")
+                  SAVINGS=$(echo $REPORT | grep -o '"potential_monthly_savings":[0-9.]*' | cut -d: -f2)
+                  NODES=$(echo $REPORT | grep -o '"total_nodes":[0-9]*' | cut -d: -f2)
+                  PCT=$(echo $REPORT | grep -o '"savings_percentage":[0-9.]*' | cut -d: -f2)
+
+                  echo "Monthly savings opportunity: $${SAVINGS} (${PCT}% of $${NODES} nodes)"
+
+                  if [ -n "$SLACK_WEBHOOK_URL" ]; then
+                    curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+                      -H "Content-Type: application/json" \
+                      -d "{\"text\":\"💰 *EKS Cost Report*: \$${SAVINGS}/mo savings opportunity (${PCT}%) across ${NODES} nodes. <${API_URL}/cost-report|View full report>\"}"
+                  fi
+
+                  echo "=== Triggering AI analysis ==="
+                  curl -sf "${API_URL}/ai/analyze?focus=quick_wins&force_refresh=true" > /dev/null
+                  echo "Done."

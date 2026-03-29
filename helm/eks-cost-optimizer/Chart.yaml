@@ -1,0 +1,16 @@
+apiVersion: v2
+name: eks-cost-optimizer
+description: AI-powered EKS cost optimization and right-sizing engine
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/your-org/eks-cost-optimizer
+maintainers:
+  - name: Platform Engineering
+    email: platform@company.com
+keywords:
+  - eks
+  - kubernetes
+  - cost-optimization
+  - ai
+  - finops

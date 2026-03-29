@@ -1,0 +1,101 @@
+---
+# PrometheusRule: alerting rules for cost waste thresholds
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: eks-cost-optimizer-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: eks-cost-optimizer
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: eks.cost.waste
+      interval: 5m
+      rules:
+        # Alert when a node is completely idle for 30+ minutes
+        - alert: EKSIdleNodeDetected
+          expr: |
+            (
+              kube_node_status_allocatable{resource="cpu"} > 0
+            ) unless on(node) (
+              kube_pod_info{pod!~".*daemonset.*"} * on(pod,namespace) group_left(node)
+              kube_pod_status_phase{phase="Running"}
+            )
+          for: 30m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Idle EKS node: {{ $labels.node }}"
+            description: "Node {{ $labels.node }} has no running pods for 30+ minutes. Consider draining and terminating."
+            runbook: "https://wiki.company.com/eks-cost-optimizer/runbooks/idle-nodes"
+
+        # Alert when aggregate CPU waste > 40%
+        - alert: EKSHighCPUWaste
+          expr: |
+            (
+              sum(kube_pod_container_resource_requests{resource="cpu", container!=""})
+              -
+              sum(rate(container_cpu_usage_seconds_total{container!="", container!="POD"}[30m]))
+            )
+            /
+            sum(kube_pod_container_resource_requests{resource="cpu", container!=""})
+            > 0.40
+          for: 1h
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High cluster CPU waste ({{ $value | humanizePercentage }})"
+            description: "More than 40% of requested CPU is unused. Consider running right-sizing analysis."
+
+        # Alert when aggregate memory waste > 50%
+        - alert: EKSHighMemoryWaste
+          expr: |
+            (
+              sum(kube_pod_container_resource_requests{resource="memory", container!=""})
+              -
+              sum(container_memory_working_set_bytes{container!="", container!="POD"})
+            )
+            /
+            sum(kube_pod_container_resource_requests{resource="memory", container!=""})
+            > 0.50
+          for: 1h
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High cluster memory waste ({{ $value | humanizePercentage }})"
+            description: "More than 50% of requested memory is unused. Run the EKS Cost Optimizer."
+
+        # Alert when a node group runs with very low utilization for 2h
+        - alert: EKSNodeGroupUnderutilized
+          expr: |
+            avg by (label_eks_amazonaws_com_nodegroup) (
+              1 - (
+                kube_node_status_allocatable{resource="cpu"}
+                - on(node) sum by(node)(kube_pod_container_resource_requests{resource="cpu"})
+              )
+              / kube_node_status_allocatable{resource="cpu"}
+            ) < 0.20
+          for: 2h
+          labels:
+            severity: info
+            team: platform
+          annotations:
+            summary: "Node group {{ $labels.label_eks_amazonaws_com_nodegroup }} under-utilized"
+            description: "Average CPU utilization below 20% for 2 hours. Consider scaling down."
+
+    - name: eks.cost.optimizer.health
+      rules:
+        - alert: EKSCostOptimizerDown
+          expr: up{job="eks-cost-optimizer"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "EKS Cost Optimizer service is down"
+            description: "The cost optimizer pod is not reachable. Cost visibility is degraded."

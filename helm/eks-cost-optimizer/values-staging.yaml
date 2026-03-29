@@ -1,0 +1,58 @@
+# ── Staging environment overrides ────────────────────────────────────────────
+# Usage:
+#   helm upgrade --install eks-cost-optimizer ./helm/eks-cost-optimizer \
+#     -f helm/eks-cost-optimizer/values.yaml \
+#     -f helm/eks-cost-optimizer/values-staging.yaml
+
+image:
+  # Staging uses the git-SHA tag; CI sets this via --set image.tag=<sha>
+  tag: "latest"
+
+replicaCount: 1
+
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/eks-cost-optimizer-staging-role"
+
+config:
+  CLUSTER_NAME: "staging-eks"
+  AWS_DEFAULT_REGION: "us-east-1"
+  K8S_IN_CLUSTER: "true"
+  PROMETHEUS_URL: "http://prometheus-server.monitoring.svc.cluster.local:9090"
+  METRICS_LOOKBACK_HOURS: "12"
+  CACHE_TTL_SECONDS: "120"
+  LOG_LEVEL: "DEBUG"
+  CORS_ORIGINS: '["*"]'
+
+# Pass the public API URL so the React app knows where to call.
+# For in-cluster same-origin serving, leave this empty.
+extraEnv:
+  - name: API_URL
+    value: ""
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+  hosts:
+    - host: eks-cost-optimizer.staging.internal.company.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+autoscaling:
+  enabled: false
+
+podDisruptionBudget:
+  enabled: false
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
